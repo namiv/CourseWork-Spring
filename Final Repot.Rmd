@@ -1,0 +1,271 @@
+---
+title: "Health Burden Estimates in India"
+output: html_document
+---
+
+##HEALTH METRICS AND WHAT THEY MEAN
+The WHO (World Health Organization) defines Health as "a state of complete physical, mental and social well being and not merely the absence of disease or infirmity". However, from a scientific standpoint, it is important to quantify these terms in order to make better and more informed decisions about how to tackle health care and access to medical aid in various different parts of the world. **The Global Burden of Disease** is a study that is conducted regularly to estimate the burden of disease in each country that participates in it. 
+The quantification of the staggering amount of diseases that plague humanity are done by breaking them down into three primary variables:       
+- 1. YLL - Years of Life Lost
+- 2. YLD - Years of Life lost due to Disability
+- 3. DALY - Disability Adjusted Life Years        
+**Life Expectancy** is defined as the average number of years a newborn is expected to live if the current mortality rates apply.     
+Years of life lost pertain to the number of years lost due to premature death in comparison to the general life expectancy which is the mortality of a population. These are calculated by taking the difference between the age of premature death and the average life expectancy and multiplying it by the number of deaths.         
+Years lived with disability are coined to account for the morbidity factor of the equation and are defined as the years of life lost due to an impairment or disability. They can be calculated by multiplying the disability weight of the disease and the prevalence of the disease amongst the population         
+One DALY can be thought of as one lost year of "healthy" life. The sum of these DALYs across the population, or the burden of disease, can be thought of as a measurement of the gap between current health status and an ideal health situation where the entire population lives to an advanced age, free of disease and disability (source : WHO)
+DALYs are calculated as the sum of the Years of life lost (YLL) and the Years of life lost due to Disability (YLD).          
+Most analyses are done by accounting for the net DALYs of a population when measuring health burden. Examining and analysing these metrics for a population helps us draw many keen insights about the health of the population and plan on how to best tackle predominant health issues.      
+India is a vast country located in the south eastern part of the continent of Asia and is the second most populous country in the world. Different metrics of disease burden tell different stories about the health of a country.    
+We can begin examining the health burden by looking at the diseases that have the highest values of DALYs associated with them.      
+
+
+##BURDEN BY CAUSE
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+#install.packages("dplyr")
+library(dplyr)
+library(ggplot2)
+library(knitr)
+
+#################################################################################################
+# LOAD INITIAL DATA FRAMES
+deaths<-read.csv("data/deaths.csv")
+ylds<-read.csv("data/ylds.csv")
+life_ex<-read.csv("data/life_expectancy.csv")
+
+#################################################################################################
+# MERGING DATA FRAMES 
+join<-merge(deaths,ylds, by = c("cause_name","age","sex"))
+join[is.na(join)]<-0
+prep_data<-merge(join,life_ex, by = "age")
+prep_data %>% arrange(cause_name) %>% mutate(age_group = substr(age, 1, 2)) -> prep_data
+prep_data[prep_data$age_group=='Un',"age_group"]<- 0
+prep_data$age_group<-as.numeric(prep_data$age_group)
+prep_data$life.ex.up <- prep_data$life.expectancy + prep_data$age_group
+
+#################################################################################################
+# COMPUTING YLL AND DALY
+prep_data$yll<- (prep_data$life.ex.up - prep_data$age_group)*prep_data$deaths
+prep_data$dalys<-prep_data$yll + prep_data$ylds
+
+#################################################################################################
+# AGGREGATING DATA PER CAUSE, AGE AND SEX
+prep_data %>% 
+  group_by(cause_name) %>% 
+  summarise( total_dalys = sum(dalys),
+             total_ylls = sum(yll),
+             total_ylds = sum(ylds),
+             total_deaths = sum(deaths)) -> cause_data
+cause_data %>% arrange(-total_dalys) -> temp
+top_cause_data<- head(temp,10)
+
+prep_data %>% 
+  group_by(age) %>% 
+  summarise( total_dalys = sum(dalys),
+             total_ylls = sum(yll),
+             total_ylds = sum(ylds),
+             total_deaths = sum(deaths))-> age_data
+
+prep_data %>% 
+  group_by(age,sex) %>% 
+  summarise( total_dalys = sum(dalys),
+             total_ylls = sum(yll),
+             total_ylds = sum(ylds),
+             total_deaths = sum(deaths))-> sex_data
+kable(top_cause_data, caption = "Top Causes of Health Burdens in India and their metrics")
+
+```
+
+
+
+Here we see Ischemic Heart Disease leading the way with the highest number of DALYs and seconded by Chronic Obstructive Pulmonary Disease. An interesting observation is that the severity of these conditions is so high that the YLL predominates which implies that a large section of people lose their lives to them. These signify lifestyle issues with the populace and maybe having a closer look at the age bracket might make things clearer in understanding them. 
+It will also be interesting to see how the DALYs for these diseases are split into the YLLS and YLDS which can represent whether the condition is a greater burden as a disability or as a life threatening condition
+
+
+
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+top_cause_data %>% select(cause_name,total_dalys) ->t1
+t1$Metric<- "DALYS"
+colnames(t1)<-c("Causes","Burden","Metric") 
+top_cause_data %>% select(cause_name,total_ylls) ->t2
+t2$Metric<- "YLLs"
+colnames(t2)<-c("Causes","Burden","Metric")
+top_cause_data %>% select(cause_name,total_ylds) ->t3
+t3$metric<- "YLDs"
+colnames(t3)<-c("Causes","Burden","Metric")
+top_cause_data2<- rbind(t1,t2,t3)
+
+ggplot(data=top_cause_data2, aes(x=Causes,y=Burden, fill = Metric)) +
+  geom_bar(stat="identity", position="dodge", width = 0.5) +
+  coord_flip() +
+  theme_bw() + 
+  theme(panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        panel.grid.major.y = element_line(color='grey60', linetype='dashed')) +
+  theme(axis.text.x = element_text(angle=65, vjust=0.6)) +
+  labs(x="Causes", y="Health Burden", title = "Health Burden by Cause") +
+  facet_grid(Metric~.)
+
+ggplot(data=top_cause_data2, aes(x=Causes,y=Burden, fill = Metric)) +
+  geom_bar(stat="identity", position="dodge", width = 0.5) +
+  coord_flip() +
+  theme_bw() + 
+  theme(panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        panel.grid.major.y = element_line(color='grey60', linetype='dashed')) +
+  theme(axis.text.x = element_text(angle=65, vjust=0.6)) +
+  labs(x="Causes", y="Health Burden", title = "Health Burden by Cause")
+
+#grid.arrange(p3,p4, nrow=1, ncol=2)
+```
+
+As can be seen in the graph above, the YLDs for most of these are far lower than the YLLs. Most of these conditions point to fatal and lifethreatening issues but can however be cured with the right medical intervention such as Tuberculosis, Preterm birth complications, lower respiratory infections and Diarrheal infections. These are clear indicators that the population of this vast and populous country does not have proper access to medicine. With the country still in its developing stage, there is also a section of the society that wants for proper sanitation and healthy living conditions which point towards the presence of various air and water borne infections on this list
+
+A peculiarity on this list seems to be Lower back and neck pain which is the 10th most serious condition plaguing the country in terms of the DALYs this generates and what is more interesting is that this is the only disease which has no YLLs but has a high amount of YLDs which bring up the total count. This can be explained by the large section of the country that is involved in manual and often heavy physical labour. It can also be accounted for by the sedentary lifestyle of the working blue collar class.
+
+## BURDEN BY AGE
+
+The health of a population can largely be determined by which age group of the country is more burdened by health loss- if its is the older group, there can be more emphasis on preventive action plans versus a younger group when suffering health loss brings down the total health of the country due to a larger loss in life.
+Years of life lost by the younger generation is a lot higher than those by an older group mathematically. As can be seen by the graph below, there is a massive spike in the DALYS for infants below 5 years which accounts for larger YLL numbers and ties in with the previous results of high DALY numbers of neonatal conditions and preterm birth complications. Such conditions again have roots in improper care and lack of awareness about health and sanitation. The maasive count of neonatal mortality is reflected in the visualizations below: 
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+age_data %>% mutate(age_group = substr(age, 1, 2)) -> age_data
+age_data[age_data$age_group=='Un',"age_group"]<- 0
+age_data$age_group <- as.numeric(age_data$age_group)
+#age_data %>% arrange(age_group) -> age_data
+#age_data$age_group <- factor(age_data$age_group, levels = age_data$age_group) 
+ggplot(age_data, aes(x=total_dalys, y=reorder(age, age_group))) + 
+  geom_point(aes(size = total_ylls), colour = "orange") +
+  theme_bw() + 
+  theme(panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        panel.grid.major.y = element_line(color='grey60', linetype='dashed'))+
+  labs(x="Health Burden (Total DALYs)", y="Age groups ", title = "Health Burden by Age") 
+
+ggplot(data=age_data, aes(x=reorder(age, age_group),y=total_ylls)) +
+  geom_bar(stat="identity", position="dodge", width = 0.25, fill = "orange", color = "black") +
+  coord_flip()+
+  ylim(0,110000000)+
+  theme_bw() + 
+  theme(panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        panel.grid.major.y = element_line(color='grey60', linetype='dashed')) +
+  labs(x="Age Groups", y="Years of Life Lost (YLLs)", title = "Health Burden by Cause")
+```
+
+
+Looking a little more closely at the exact causes that plague this age group (Under 5), we can see the primary cause of loss of life which include other than neonatal disorders, an incidence of respiratory disorders and diarrheal issues. These observations point to lack of awareness, sanitation and access to medical facilities - all of which if provided could have drastically brought down the numbers of YLLs in infants
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+prep_data%>% 
+  group_by(cause_name, age, sex) %>% 
+  summarise(total_dalys = sum(dalys),
+            total_ylls = sum(yll),
+            total_ylds = sum(ylds),
+            total_deaths = sum(deaths)) -> trial
+trial %>% arrange(-total_dalys) -> trial2
+trial3<- head(trial2,10)  
+ggplot(data=trial3, aes(x=reorder(cause_name,total_ylls),y=total_ylls)) +
+  geom_bar(stat="identity", position="dodge", width = 0.5, fill = "light blue") +
+  coord_flip()+
+  ylim(0,15000000)+
+  theme_bw() + 
+  theme(panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        panel.grid.major.y = element_line(color='grey60', linetype='dashed')) +
+  labs(x="Causes", y="Years of Life Lost", title = "Causes for Years of life lost under 5yrs ")
+```
+
+
+There also is a spike for the age-group of 20-24 and then again for 55-64. Looking at the YLL and YLD counts for these particular age groups, we can see that these age groups have a higher YLL count than a YLD one indicating possible rates of self harm in teens and young adults (15-19 and 20-24). The spike in YLLs over the age groups of 45- 65 resonates with the incidence of Ischemic Heart Disease and Pulmonary diseases which typically affect this age group. We can see this broken down further ahead based on Disease and Age group.    
+Similarly, the graph indicating YLLs has a higher incidence rate than the YLDs (over the same scale for a quick and fair reference) indicating the burden of disease in these age groups is primarily due to years of life lost and not YLDs. 
+**Note** : The absence of values for the YLLs for infants below 5 years has been treated as an outlier for better comparison of other age groups.
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+#install.packages("gridExtra")
+library(gridExtra)
+p5<- ggplot(data=age_data, aes(x=reorder(age, age_group),y=total_ylls)) +
+  geom_bar(stat="identity", position="dodge", width = 0.25, fill = "blue", color = "white") +
+  coord_flip()+
+  ylim(0,30000000)+
+  theme_bw() + 
+  theme(panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        panel.grid.major.y = element_line(color='grey60', linetype='dashed')) +
+  labs(x="Age Groups", y="Years of Life Lost")
+p6<- ggplot(data=age_data, aes(x=reorder(age, age_group),y=total_ylds)) +
+  geom_bar(stat="identity", position="dodge", width = 0.25, fill = "blue", color = "white") +
+  coord_flip()+
+  ylim(0,30000000)+
+  theme_bw() + 
+  theme(panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        panel.grid.major.y = element_line(color='grey60', linetype='dashed')) +
+   labs(x="Age Groups", y="Years of Life Lived with Disability")
+grid.arrange(p5,p6, nrow=1, ncol=2)
+```
+
+A breakdown of conditions leading to primary loss of health and lives pertaining to the middle ages is given below. This ties in with our previous observations about Heart Disease being a primary motivator in this age group. Another notable entry was Road Injuries pronouncedly in the 25-29 age group and also the incidence of Tuberculosis infections.
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+trial %>% arrange(cause_name) %>% mutate(age_group = substr(age, 1, 2)) -> trial
+trial[trial$age_group=='Un',"age_group"]<- 0
+trial %>% filter(age_group>20 & age_group<65) ->trial4
+trial4 %>% arrange(-total_ylls) %>% select(cause_name,sex,age,total_dalys,total_ylls,total_ylds)-> trial4
+final_table<-head(trial4,15)
+kable(final_table, caption = "Incidence of diseases in middle ages")
+```
+
+
+## BURDEN BY SEX    
+
+Understanding if sex has a role to play in these numbers gives us a keen insight into the bent of the population and helps in understanding behaviors prevalent in the larger picture. 
+From the graphs, we can gather that males seem to be burdened more than the females across almost all age groups with a marked increase during the middle ages (25 to 55). Since men are primarily the breadwinners and often engage in physical labor for the same, they are at a higher risk of death and disease. 
+
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+sex_data %>% mutate(age_group = substr(age, 1, 2)) -> sex_data
+sex_data[sex_data$age_group=='Un',"age_group"]<- 0
+sex_data$age_group <- as.numeric(sex_data$age_group)
+#sex_data %>% arrange(age_group) -> sex_data
+
+ggplot(data = sex_data, aes(x=reorder(age,age_group), y=total_dalys, fill = sex)) +
+  geom_bar(stat="identity", position="dodge", width = 0.65) +
+  coord_flip() +
+  theme_bw() + 
+  theme(panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        panel.grid.major.y = element_line(color='grey60', linetype='dashed')) +
+   labs(x="Age group ", y="Health Burden (Total DALYs)")
+```
+
+On having a closer look at the YLL and YLD breakdown by age as well as sex, we can tie in our observations from above and as followed previously, compare health burdens over both sexes on the same scale. The primary takeaway seems to be that YLDs are more or less evenly divided amongst both sexes and are at a lower scale than the YLLs. However, in case of the YLDs, even though by a smaller margin, females seem to be the more burdened ones almost consistently through all age groups. Considering the various social and economicla factors that often plague developing countries in this part of the world, female health and sanitation is often an overlooked factor which might account for the higher YLD numbers. 
+The YLLs on the other hand seem to make up for the majority of the DALY numbers and have a preponderance of males in the working age groups of 30-65. The growth in this number can be accounted for through the large incidence of heart disease and other infectious diseases. 
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+p7<- ggplot(data=sex_data, aes(x=reorder(age, age_group),y=total_ylls, fill = sex)) +
+  geom_bar(stat="identity", position="dodge", width = 0.5) +
+  coord_flip()+
+  ylim(0,15000000)+
+  theme_bw() + 
+  theme(panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        panel.grid.major.y = element_line(color='grey60', linetype='dashed')) +
+  labs(x="Age Group ", y="Years of Life Lost")
+p8<- ggplot(data=sex_data, aes(x=reorder(age, age_group),y=total_ylds, fill = sex)) +
+  geom_bar(stat="identity", position="dodge", width = 0.5) +
+  coord_flip()+
+ ylim(0,15000000)+
+  theme_bw() + 
+  theme(panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        panel.grid.major.y = element_line(color='grey60', linetype='dashed')) +
+  labs(x="Age Group ", y="Years of Life Lived with Disability")
+grid.arrange(p7,p8, nrow=1, ncol=2)
+```
+
+
+```
+
+
